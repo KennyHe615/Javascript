@@ -1,0 +1,34 @@
+{
+   "printWidth": 128,
+   "tabWidth": 3,
+   "useTabs": false,
+   "semi": true,
+   "singleQuote": true,
+   "trailingComma": "none",
+   "arrowParens": "always",
+   "bracketSpacing": true,
+   "bracketSameLine": false,
+   "quoteProps": "as-needed",
+   "endOfLine": "auto",
+   "proseWrap": "preserve",
+   "singleAttributePerLine": true,
+   "objectWrap": "preserve",
+   "insertFinalNewline": true,
+   "overrides": [
+      {
+         "files": "*.md",
+         "options": {
+            "proseWrap": "always"
+         }
+      },
+      {
+         "files": [
+            "*.yml",
+            "*.yaml"
+         ],
+         "options": {
+            "singleQuote": false
+         }
+      }
+   ]
+}
