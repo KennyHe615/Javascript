@@ -4,7 +4,7 @@
    "useTabs": false,
    "semi": true,
    "singleQuote": true,
-   "trailingComma": "none",
+   "trailingComma": "all",
    "arrowParens": "always",
    "bracketSpacing": true,
    "bracketSameLine": false,
@@ -13,7 +13,6 @@
    "proseWrap": "preserve",
    "singleAttributePerLine": true,
    "objectWrap": "preserve",
-   "insertFinalNewline": true,
    "overrides": [
       {
          "files": "*.md",
