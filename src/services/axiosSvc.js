@@ -231,23 +231,23 @@ export { AxiosSvc };
 // Sample Usage:
 //
 // 1. Default singleton (most common):
-(async () => {
-   const request = {
-      method: 'POST',
-      url: '/api/v2/analytics/conversations/details/query',
-      data: {
-         order: 'asc',
-         orderBy: 'conversationStart',
-         interval: '2025-07-01T00:00Z/2025-07-01T00:30Z',
-         paging: {
-            pageSize: Constants.DEFAULT_API_PAGE_SIZE,
-            pageNumber: 1,
-         },
-      },
-   };
-   const response = await axiosSvc.sendRequestAsync(request);
-   console.log('response: ', response.conversations.length);
-})();
+// (async () => {
+//    const request = {
+//       method: 'POST',
+//       url: '/api/v2/analytics/conversations/details/query',
+//       data: {
+//          order: 'asc',
+//          orderBy: 'conversationStart',
+//          interval: '2025-07-01T00:00Z/2025-07-01T00:30Z',
+//          paging: {
+//             pageSize: Constants.DEFAULT_API_PAGE_SIZE,
+//             pageNumber: 1,
+//          },
+//       },
+//    };
+//    const response = await axiosSvc.sendRequestAsync(request);
+//    console.log('response: ', response.conversations.length);
+// })();
 //
 // 2. Dependency Injection (for testing):
 // import { AxiosService } from './services/axiosService.js';
@@ -261,3 +261,14 @@ export { AxiosSvc };
 //    AxiosFactory.getInstance(),
 //    { retryLimit: 5, retryDelays: { default: 5000 } }
 // );
+//
+// 4. SOAP Request Sample
+// const soapRequest = {
+//    method: 'GET',
+//    baseURL: 'baseURL',
+//    url: 'Url',
+//    headers: {
+//       'Content-Type': 'text/xml;charset=UTF-8',
+//       SOAPAction: 'soapAction',
+//    },
+// };
