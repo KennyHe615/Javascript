@@ -3,8 +3,8 @@ import utc from 'dayjs/plugin/utc.js';
 import customParseFormat from 'dayjs/plugin/customParseFormat.js';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore.js';
 import minMax from 'dayjs/plugin/minMax.js';
-import logger from '../services/winstonService.js';
-import CustomError from './customErrors/customError.js';
+import logger from '../services/winstonSvc.js';
+import CustomError from './errors/customError.js';
 import CdApiSvc from '../conversationDetail_cd/cdApi.svc.js';
 
 dayjs.extend(utc);

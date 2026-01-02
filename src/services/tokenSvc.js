@@ -1,6 +1,6 @@
-import * as path from 'path';
+import path from 'path';
 import Constants from '../utils/constants.js';
-import CustomError from '../utils/customErrors/customError.js';
+import CustomError from '../utils/errors/customError.js';
 import FileManager from '../utils/fileManager.js';
 
 /**

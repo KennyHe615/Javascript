@@ -1,7 +1,7 @@
 import { setTimeout } from 'timers/promises';
-import logger from './winstonService.js';
+import logger from './winstonSvc.js';
 import tokenSvc from './tokenSvc.js';
-import CustomError from '../utils/customErrors/customError.js';
+import CustomError from '../utils/errors/customError.js';
 import Constants from '../utils/constants.js';
 import AxiosFactory from '../factories/axiosFactory.js';
 

@@ -15,7 +15,7 @@ vi.mock('../../src/utils/constants.js', () => ({
    },
 }));
 
-vi.mock('../../src/services/winstonService.js', () => ({
+vi.mock('../../src/services/winstonSvc.js', () => ({
    default: {
       info: vi.fn(),
       error: vi.fn(),
@@ -32,7 +32,7 @@ vi.mock('../../src/services/tokenSvc.js', () => ({
 }));
 
 const tokenSvc = (await import('../../src/services/tokenSvc.js')).default;
-const logger = (await import('../../src/services/winstonService.js')).default;
+const logger = (await import('../../src/services/winstonSvc.js')).default;
 
 describe('AxiosSvc', () => {
    let mockAxiosInstance;

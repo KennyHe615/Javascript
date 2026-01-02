@@ -1,7 +1,7 @@
 import axios from 'axios';
 import AxiosConfiguration from '../configurations/axiosConfiguration.js';
-import CustomError from '../utils/customErrors/customError.js';
-import ApiRequestError from '../utils/customErrors/apiRequestError.js';
+import CustomError from '../utils/errors/customError.js';
+import ApiRequestError from '../utils/errors/apiRequestError.js';
 
 /**
  * Factory class for creating and managing Axios instances.
@@ -63,7 +63,7 @@ export default class AxiosFactory {
             timeout: configuration.timeout,
             httpsAgent: configuration.httpsAgent,
             maxRedirects: configuration.maxRedirects,
-            validateStatus: configuration.validateStatus
+            validateStatus: configuration.validateStatus,
          };
 
          if (configuration.baseURL) config.baseURL = configuration.baseURL;
@@ -81,7 +81,7 @@ export default class AxiosFactory {
             className: AxiosFactory.#CLASS_NAME,
             functionName: '#createInstance',
             parameters: AxiosFactory.#sanitizeConfig(configuration),
-            details: err
+            details: err,
          }).toObject();
       }
    }
@@ -99,7 +99,7 @@ export default class AxiosFactory {
          message: '',
          className: AxiosFactory.#CLASS_NAME,
          functionName: '#validateConfig',
-         parameters: AxiosFactory.#sanitizeConfig(configuration)
+         parameters: AxiosFactory.#sanitizeConfig(configuration),
       }).toObject();
 
       if (!configuration) {
@@ -136,7 +136,7 @@ export default class AxiosFactory {
          (error) => {
             const apiError = new ApiRequestError(error);
             return Promise.reject(apiError.toObject());
-         }
+         },
       );
 
       // Request interceptor can be added here if needed in the future
@@ -165,7 +165,7 @@ export default class AxiosFactory {
          timeout: configuration.timeout,
          maxRedirects: configuration.maxRedirects,
          hasHttpsAgent: !!configuration.httpsAgent,
-         hasValidateStatus: !!configuration.validateStatus
+         hasValidateStatus: !!configuration.validateStatus,
       };
 
       if (configuration.baseURL) sanitized.baseURL = configuration.baseURL;

@@ -3,8 +3,8 @@ import fs from 'fs/promises';
 import admZip from 'adm-zip';
 import dayjs from 'dayjs';
 import { setTimeout } from 'timers/promises';
-import CustomError from './customErrors/customError.js';
-import logger from '../services/winstonService.js';
+import CustomError from './errors/customError.js';
+import logger from '../services/winstonSvc.js';
 
 /**
  * FileManager - Utility class for file system operations.

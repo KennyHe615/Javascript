@@ -1,9 +1,9 @@
-import * as path from 'path';
+import path from 'path';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import appRoot from 'app-root-path';
 import os from 'os';
-import CustomError from './customErrors/customError.js';
+import CustomError from './errors/customError.js';
 
 /**
  * Constants - Application-wide configuration and environment variable manager.

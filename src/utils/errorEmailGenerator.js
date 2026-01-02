@@ -1,5 +1,5 @@
 import Constants from './constants.js';
-import CustomError from './customErrors/customError.js';
+import CustomError from './errors/customError.js';
 
 /**
  * ErrorEmailGenerator - Generates formatted email content for error notifications.
