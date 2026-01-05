@@ -1,0 +1,188 @@
+import logger from './winstonSvc.js';
+import DatabaseError from '../utils/errors/databaseError.js';
+import CustomError from '../utils/errors/customError.js';
+
+/**
+ * Service class for managing Sequelize database operations.
+ * Provides connection management (instance methods) and common database operations (static utility methods).
+ *
+ * @class SequelizeSvc
+ */
+export default class SequelizeSvc {
+   static #CLASS_NAME = 'SequelizeSvc';
+
+   #instance;
+
+   /**
+    * Creates a new SequelizeSvc instance.
+    *
+    * @param {import('sequelize').Sequelize} instance - Sequelize instance (required for DI)
+    * @throws {CustomError} If sequelize instance is not provided
+    */
+   constructor(instance) {
+      if (!instance) {
+         throw new CustomError({
+            message: 'Sequelize Instance is required',
+            className: SequelizeSvc.#CLASS_NAME,
+            functionName: 'constructor',
+         }).toObject();
+      }
+
+      this.#instance = instance;
+   }
+
+   /**
+    * Establishes database connection.
+    *
+    * @async
+    * @returns {Promise<void>}
+    * @throws {DatabaseError} When connection fails
+    */
+   async connectAsync() {
+      const dbName = this.#instance?.config?.database;
+
+      try {
+         await this.#instance.authenticate();
+
+         await this.#instance.query('SELECT 1 AS connection_test');
+
+         logger.info(`Database ${dbName} Connected SUCCESSFULLY!`);
+      } catch (err) {
+         logger.error(`Database connection error: ${JSON.stringify({ database: dbName, error: err.message }, null, 3)}`);
+
+         throw new DatabaseError(undefined, err).toObject();
+      }
+   }
+
+   /**
+    * Closes database connection.
+    *
+    * @async
+    * @returns {Promise<void>}
+    * @throws {DatabaseError} When disconnection fails
+    */
+   async disconnectAsync() {
+      const dbName = this.#instance?.config?.database;
+
+      try {
+         await this.#instance.close();
+
+         logger.info(`Database ${dbName} Disconnected SUCCESSFULLY!`);
+      } catch (err) {
+         logger.error(`Database disconnection error: ${JSON.stringify({ database: dbName, error: err.message }, null, 3)}`);
+
+         throw new DatabaseError(undefined, err).toObject();
+      }
+   }
+
+   /**
+    * Performs upsert operation on the database.
+    * This is a static utility method that works with any Sequelize model.
+    *
+    * @static
+    * @async
+    * @param {Object|Array} mappedData - Data to upsert (single object or array of objects)
+    * @param {import('sequelize').Model} model - Sequelize model (already bound to a connection)
+    * @returns {Promise<void>}
+    * @throws {CustomError} When upsert operation fails
+    * @example
+    * await SequelizeSvc.upsert({ id: 1, name: 'John' }, UserModel);
+    * await SequelizeSvc.upsert([{ id: 1, name: 'John' }, { id: 2, name: 'Jane' }], UserModel);
+    */
+   static async upsertAsync(mappedData, model) {
+      if (!mappedData || !model) {
+         throw new CustomError({
+            message: 'Both "mappedData" and "model" are required!',
+            className: SequelizeSvc.#CLASS_NAME,
+            functionName: 'upsertAsync',
+            parameters: { modelName: model?.NAME },
+         }).toObject();
+      }
+
+      try {
+         const data = Array.isArray(mappedData) ? mappedData : [mappedData];
+         if (data.length === 0) return;
+
+         await Promise.all(
+            data.map(async (row) => {
+               try {
+                  await model.upsert(row, { fields: model?.FIELDS || [] });
+               } catch (err) {
+                  throw new DatabaseError(row, err).toObject();
+               }
+            }),
+         );
+      } catch (err) {
+         logger.error(`Upsert operation failed: ${JSON.stringify(err, null, 3)}`);
+
+         throw new CustomError({
+            message: 'Upserting Record ERROR!',
+            className: SequelizeSvc.#CLASS_NAME,
+            functionName: 'upsertAsync',
+            parameters: { modelName: model?.NAME },
+            details: err,
+         }).toObject();
+      }
+   }
+
+   /**
+    * Creates a new record in the database.
+    *
+    * @static
+    * @async
+    * @param {Object} mappedData - Data to create
+    * @param {import('sequelize').Model} model - Sequelize model (already bound to a connection)
+    * @returns {Promise<Object>} Created record
+    * @throws {CustomError} When create operation fails or data is empty
+    */
+   static async createAsync(mappedData, model) {
+      if (!mappedData || !model) {
+         throw new CustomError({
+            message: 'Both "mappedData" and "model" are required!',
+            className: SequelizeSvc.#CLASS_NAME,
+            functionName: 'createAsync',
+            parameters: { modelName: model?.NAME },
+         }).toObject();
+      }
+
+      if (Object.keys(mappedData).length === 0) {
+         throw new CustomError({
+            message: 'No data provided for create operation',
+            className: SequelizeSvc.#CLASS_NAME,
+            functionName: 'createAsync',
+            parameters: { modelName: model?.NAME },
+         });
+      }
+
+      try {
+         return await model.create(mappedData);
+      } catch (err) {
+         logger.error(`Create operation failed: ${JSON.stringify(err, null, 3)}`);
+
+         throw new DatabaseError(mappedData, err).toObject();
+      }
+   }
+}
+
+// Sample Usage:
+//
+// 1. Connection management (instance methods):
+// import SequelizeFactory from '../factories/sequelizeFactory.js';
+// (async () => {
+   // const dbSvc = new SequelizeSvc(SequelizeFactory.getInstance());
+   // await dbSvc.connectAsync();
+   // await dbSvc.disconnectAsync();
+// })();
+//
+// 2. Database operations (static utility methods):
+// import SequelizeSvc from './services/sequelizeSvc.js';
+// import UserModel from './models/userModel.js';
+//
+// await SequelizeSvc.upsertAsync({ id: 1, name: 'John' }, UserModel);
+// await SequelizeSvc.createAsync({ name: 'Jane' }, UserModel);
+//
+// 3. Combined usage:
+// const dbService = new SequelizeSvc(SequelizeFactory.getStagingInstance());
+// await dbService.connect();
+// await SequelizeSvc.upsert(data, SomeModel);  // Static utility
+// await dbService.disconnect();
