@@ -13,10 +13,10 @@ class TokenSvc {
    static #CLASS_NAME = 'TokenSvc';
    static #TOKEN_FILE_PATH = path.join(Constants.ROOT_FOLDER, 'info', 'genesysToken');
    static #CONFIG = Object.freeze({
-      OAUTH_ENDPOINT: 'https://login.cac1.pure.cloud',
-      OAUTH_PATH: '/oauth/token',
-      GRANT_TYPE: 'client_credentials',
-      CONTENT_TYPE: 'application/x-www-form-urlencoded',
+      oauthEndpoint: 'https://login.cac1.pure.cloud',
+      oauthPath: '/oauth/token',
+      grantType: 'client_credentials',
+      contentType: 'application/x-www-form-urlencoded',
    });
 
    #axiosSvc;
@@ -116,11 +116,11 @@ class TokenSvc {
 
          const request = {
             method: 'POST',
-            baseURL: TokenSvc.#CONFIG.OAUTH_ENDPOINT,
-            url: TokenSvc.#CONFIG.OAUTH_PATH,
-            params: { grant_type: TokenSvc.#CONFIG.GRANT_TYPE },
+            baseURL: TokenSvc.#CONFIG.oauthEndpoint,
+            url: TokenSvc.#CONFIG.oauthPath,
+            params: { grant_type: TokenSvc.#CONFIG.grantType },
             headers: {
-               'Content-Type': TokenSvc.#CONFIG.CONTENT_TYPE,
+               'Content-Type': TokenSvc.#CONFIG.contentType,
                Authorization: this.#buildBasicAuthHeader(),
             },
          };
