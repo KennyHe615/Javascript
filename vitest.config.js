@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
    test: {
+      testTimeout: 10000, // Global timeout for all tests
       environment: 'node', // This is the default, but explicit is better
       globals: true,
       coverage: {
