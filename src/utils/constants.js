@@ -97,12 +97,15 @@ class Constants {
 
          Object.assign(Constants, config);
       } catch (err) {
-         throw new CustomError({
+         const error = new CustomError({
             message: 'Failed to initialize Constants',
             className: this.#CLASS_NAME,
             functionName: 'init',
             details: err,
          }).toObject();
+
+         console.error('FATAL: Constants initialization failed', JSON.stringify(error, null, 3));
+         throw error;
       }
    }
 
@@ -134,7 +137,7 @@ class Constants {
          }).toObject();
       }
 
-      if (!result.parsed) {
+      if (!result.parsed || Object.keys(result.parsed).length === 0) {
          throw new CustomError({
             message: `Environment file is empty or invalid: ${fileName}`,
             className: this.#CLASS_NAME,
