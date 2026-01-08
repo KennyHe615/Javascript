@@ -18,7 +18,7 @@ export default class WinstonFactory {
     * Gets or creates the singleton Winston logger instance.
     *
     * @static
-    * @param {WinstonConfiguration} [configuration] - Optional configuration object. Only used on first call.
+    * @param {WinstonConfiguration} [configuration] - Optional configuration object. Only used on the first call.
     * @returns {import('winston').Logger} The Winston logger instance
     * @throws {CustomError} If logger creation fails
     */

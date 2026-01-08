@@ -14,36 +14,38 @@ import CustomError from './errors/customError.js';
  */
 class Constants {
    static #CLASS_NAME = 'Constants';
-   static #ENCRYPTION_ALGORITHM = 'aes-256-gcm';
-   static #WINDOWS_IVR_PATH = 'D:\\GenesysIVRFiles\\';
-   static #REQUIRED_GENERAL_VARS = [
-      'PROJECT_NAME',
-      'RUNNING_ENVIRONMENT',
-      'GENESYS_ENDPOINT_URL',
-      'DEFAULT_API_PAGE_SIZE',
-      'SQL_DATABASE',
-      'EMAIL_HOST',
-      'EMAIL_PORT',
-      'EMAIL_USER',
-      'EMAIL_PW_TAG',
-      'EMAIL_PW_ENCRYPTED',
-      'EMAIL_DEFAULT_FROM',
-      'ENCRYPT_KEY',
-      'ENCRYPT_IV',
-   ];
-   static #REQUIRED_SPECIFIC_VARS = [
-      'GENESYS_CLIENT_ID_TAG',
-      'GENESYS_CLIENT_ID_ENCRYPTED',
-      'GENESYS_CLIENT_SECRET_TAG',
-      'GENESYS_CLIENT_SECRET_ENCRYPTED',
-      'SQL_SERVER',
-      'SQL_USER',
-      'SQL_PORT',
-      'SQL_PW_TAG',
-      'SQL_PW_ENCRYPTED',
-      'EMAIL_RECIPIENTS',
-      // 'EMAIL_CC_RECIPIENTS', (Optional)
-   ];
+   static #CONFIG = Object.freeze({
+      encryptionAlgorithm: 'aes-256-gcm',
+      windowsIvrFolderPath: 'D:\\GenesysIVRFiles\\',
+      requiredGeneralVars: Object.freeze([
+         'PROJECT_NAME',
+         'RUNNING_ENVIRONMENT',
+         'GENESYS_ENDPOINT_URL',
+         'DEFAULT_API_PAGE_SIZE',
+         'SQL_DATABASE',
+         'EMAIL_HOST',
+         'EMAIL_PORT',
+         'EMAIL_USER',
+         'EMAIL_PW_TAG',
+         'EMAIL_PW_ENCRYPTED',
+         'EMAIL_DEFAULT_FROM',
+         'ENCRYPT_KEY',
+         'ENCRYPT_IV',
+      ]),
+      requiredSpecificVars: Object.freeze([
+         'GENESYS_CLIENT_ID_TAG',
+         'GENESYS_CLIENT_ID_ENCRYPTED',
+         'GENESYS_CLIENT_SECRET_TAG',
+         'GENESYS_CLIENT_SECRET_ENCRYPTED',
+         'SQL_SERVER',
+         'SQL_USER',
+         'SQL_PORT',
+         'SQL_PW_TAG',
+         'SQL_PW_ENCRYPTED',
+         'EMAIL_RECIPIENTS',
+         // 'EMAIL_CC_RECIPIENTS', (Optional)
+      ]),
+   });
 
    /**
     * Application Configuration
@@ -87,19 +89,19 @@ class Constants {
       try {
          const rootFolder = appRoot.path;
 
-         const generalEnvObj = this.#loadEnvFile(rootFolder, '.env');
-         const envFileName = this.#extractEnvironmentName(generalEnvObj.RUNNING_ENVIRONMENT);
-         const specificEnvObj = this.#loadEnvFile(rootFolder, `.env.${envFileName}`);
+         const generalEnvObj = Constants.#loadEnvFile(rootFolder, '.env');
+         const envFileName = Constants.#extractEnvironmentName(generalEnvObj.RUNNING_ENVIRONMENT);
+         const specificEnvObj = Constants.#loadEnvFile(rootFolder, `.env.${envFileName}`);
 
-         this.#validateEnvironmentVariables(generalEnvObj, specificEnvObj);
+         Constants.#validateEnvironmentVariables(generalEnvObj, specificEnvObj);
 
-         const config = this.#buildConfiguration(rootFolder, generalEnvObj, specificEnvObj);
+         const config = Constants.#buildConfiguration(rootFolder, generalEnvObj, specificEnvObj);
 
          Object.assign(Constants, config);
       } catch (err) {
          const error = new CustomError({
             message: 'Failed to initialize Constants',
-            className: this.#CLASS_NAME,
+            className: Constants.#CLASS_NAME,
             functionName: 'init',
             details: err,
          }).toObject();
@@ -130,7 +132,7 @@ class Constants {
       if (result.error) {
          throw new CustomError({
             message: `Failed to load environment file: ${fileName}`,
-            className: this.#CLASS_NAME,
+            className: Constants.#CLASS_NAME,
             functionName: '#loadEnvFile',
             parameters: { filePath },
             details: result.error,
@@ -140,7 +142,7 @@ class Constants {
       if (!result.parsed || Object.keys(result.parsed).length === 0) {
          throw new CustomError({
             message: `Environment file is empty or invalid: ${fileName}`,
-            className: this.#CLASS_NAME,
+            className: Constants.#CLASS_NAME,
             functionName: '#loadEnvFile',
             parameters: { filePath },
          }).toObject();
@@ -161,7 +163,7 @@ class Constants {
       if (!runningEnvironment) {
          throw new CustomError({
             message: 'RUNNING_ENVIRONMENT is required',
-            className: this.#CLASS_NAME,
+            className: Constants.#CLASS_NAME,
             functionName: '#extractEnvironmentName',
          }).toObject();
       }
@@ -179,13 +181,13 @@ class Constants {
     * @throws {CustomError} If any required variables are missing
     */
    static #validateEnvironmentVariables(generalEnv, specificEnv) {
-      const missingGeneral = this.#REQUIRED_GENERAL_VARS.filter((key) => !generalEnv[key]);
-      const missingSpecific = this.#REQUIRED_SPECIFIC_VARS.filter((key) => !specificEnv[key]);
+      const missingGeneral = Constants.#CONFIG.requiredGeneralVars.filter((key) => !generalEnv[key]);
+      const missingSpecific = Constants.#CONFIG.requiredSpecificVars.filter((key) => !specificEnv[key]);
 
       if (missingGeneral.length > 0 || missingSpecific.length > 0) {
          throw new CustomError({
             message: 'Missing required environment variables',
-            className: this.#CLASS_NAME,
+            className: Constants.#CLASS_NAME,
             functionName: '#validateEnvironmentVariables',
             parameters: {
                missingFromGeneral: missingGeneral,
@@ -207,10 +209,11 @@ class Constants {
     */
    static #buildConfiguration(rootFolder, generalEnv, specificEnv) {
       const platform = os.platform();
-      const ivrFilePath = platform === 'win32' ? this.#WINDOWS_IVR_PATH : path.join(rootFolder, 'GenesysIVRFiles');
+      const ivrFilePath =
+         platform === 'win32' ? Constants.#CONFIG.windowsIvrFolderPath : path.join(rootFolder, 'GenesysIVRFiles');
 
       const decrypt = (tag, encryptedData, fieldName) =>
-         this.#decryptValue(generalEnv.ENCRYPT_KEY, generalEnv.ENCRYPT_IV, tag, encryptedData, fieldName);
+         Constants.#decryptValue(generalEnv.ENCRYPT_KEY, generalEnv.ENCRYPT_IV, tag, encryptedData, fieldName);
 
       return {
          ROOT_FOLDER: rootFolder,
@@ -259,7 +262,11 @@ class Constants {
     */
    static #decryptValue(key, iv, tag, encryptedData, fieldName) {
       try {
-         const decipher = crypto.createDecipheriv(this.#ENCRYPTION_ALGORITHM, Buffer.from(key, 'hex'), Buffer.from(iv, 'hex'));
+         const decipher = crypto.createDecipheriv(
+            Constants.#CONFIG.encryptionAlgorithm,
+            Buffer.from(key, 'hex'),
+            Buffer.from(iv, 'hex'),
+         );
 
          decipher.setAuthTag(Buffer.from(tag, 'hex'));
 
@@ -270,7 +277,7 @@ class Constants {
       } catch (err) {
          throw new CustomError({
             message: `Failed to decrypt field: ${fieldName}`,
-            className: this.#CLASS_NAME,
+            className: Constants.#CLASS_NAME,
             functionName: '#decryptValue',
             parameters: {
                fieldName,
@@ -296,7 +303,7 @@ class Constants {
       if (isNaN(parsed) || parsed <= 0) {
          throw new CustomError({
             message: `Invalid integer value for ${fieldName}`,
-            className: this.#CLASS_NAME,
+            className: Constants.#CLASS_NAME,
             functionName: '#parseInteger',
             parameters: {
                fieldName,

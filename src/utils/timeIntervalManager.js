@@ -25,15 +25,15 @@ export default class TimeIntervalManager {
 
    // Constants for subdivision logic
    static #THRESHOLDS = Object.freeze({
-      MAX_HITS: 100000,
-      HIGH_HITS: 200000,
-      MAX_INTERVAL_DAYS: 7,
-      ADJUSTMENT_MINUTES: 120,
-      MIN_INTERVAL_MINUTES: 1,
+      maxHits: 100000,
+      highHits: 200000,
+      maxIntervalDays: 7,
+      adjustmentMinutes: 120,
+      minIntervalMinutes: 1,
    });
    static #VALID_CATEGORIES = Object.freeze({
-      USER_DETAIL: 'User Detail',
-      CONVERSATION_DETAIL: 'Conversation Detail',
+      userDetail: 'User Detail',
+      conversationDetail: 'Conversation Detail',
    });
 
    /**
@@ -88,7 +88,7 @@ export default class TimeIntervalManager {
     * @returns {Object} Object containing startTime and endTime as dayjs objects
     * @returns {import('dayjs').Dayjs} return.startTime - Start time as dayjs object
     * @returns {import('dayjs').Dayjs} return.endTime - End time as dayjs object
-    * @throws {Object} CustomError if interval is invalid
+    * @throws {Object} CustomError if an interval is invalid
     */
    static validateAndConvertInterval(interval) {
       const errorObj = new CustomError({
@@ -150,14 +150,14 @@ export default class TimeIntervalManager {
          const diffDays = dayjsEnd.diff(dayjsStart, 'day');
 
          // Quick path: if an interval is small enough, check if we can return it as-is
-         if (diffDays <= TimeIntervalManager.#THRESHOLDS.MAX_INTERVAL_DAYS) {
+         if (diffDays <= TimeIntervalManager.#THRESHOLDS.maxIntervalDays) {
             const totalHits = await getHitsFunc(dayjsStart, dayjsEnd);
 
             logger.debug(
                `[${TimeIntervalManager.#CLASS_NAME} - subdivideIntervalAsync Start: ${dayjsStart.format()} End: ${dayjsEnd.format()} Category: ${category}] Total Hits: ${totalHits}`,
             );
 
-            if (totalHits < TimeIntervalManager.#THRESHOLDS.MAX_HITS) {
+            if (totalHits < TimeIntervalManager.#THRESHOLDS.maxHits) {
                return [TimeIntervalManager.#formatInterval(dayjsStart, dayjsEnd)];
             }
          }
@@ -191,7 +191,7 @@ export default class TimeIntervalManager {
     * @returns {Function} Function to fetch total hits
     */
    static #getHitsFunction(category) {
-      if (category === TimeIntervalManager.#VALID_CATEGORIES.USER_DETAIL) {
+      if (category === TimeIntervalManager.#VALID_CATEGORIES.userDetail) {
          return () => Promise.resolve(null);
       }
 
@@ -310,7 +310,7 @@ export default class TimeIntervalManager {
    }
 
    /**
-    * Finds the optimal end time for an interval using binary search approach.
+    * Finds the optimal end time for an interval using a binary search approach.
     * Ensures the interval doesn't exceed hit thresholds.
     *
     * @private
@@ -322,27 +322,27 @@ export default class TimeIntervalManager {
     * @returns {Promise<import('dayjs').Dayjs>} Optimal end time
     */
    static async #findOptimalEndTimeAsync(currentDayjs, maxEndDayjs, getTotalHitsFunc) {
-      const nextBoundary = currentDayjs.clone().add(TimeIntervalManager.#THRESHOLDS.MAX_INTERVAL_DAYS, 'day');
+      const nextBoundary = currentDayjs.clone().add(TimeIntervalManager.#THRESHOLDS.maxIntervalDays, 'day');
       let nextStart = dayjs.min(nextBoundary, maxEndDayjs);
 
       let totalHits = await getTotalHitsFunc(currentDayjs, nextStart);
 
       // If hits are within the threshold, return immediately
-      if (totalHits < TimeIntervalManager.#THRESHOLDS.MAX_HITS) return nextStart;
+      if (totalHits < TimeIntervalManager.#THRESHOLDS.maxHits) return nextStart;
 
       // Binary search approach to find an optimal interval
-      while (totalHits >= TimeIntervalManager.#THRESHOLDS.MAX_HITS) {
+      while (totalHits >= TimeIntervalManager.#THRESHOLDS.maxHits) {
          const diffMinutes = nextStart.diff(currentDayjs, 'minute');
 
          // Prevent infinite loop with a minimum interval
-         if (diffMinutes <= TimeIntervalManager.#THRESHOLDS.MIN_INTERVAL_MINUTES) break;
+         if (diffMinutes <= TimeIntervalManager.#THRESHOLDS.minIntervalMinutes) break;
 
          const reductionMinutes =
-            totalHits >= TimeIntervalManager.#THRESHOLDS.HIGH_HITS
-               ? Math.max(TimeIntervalManager.#THRESHOLDS.MIN_INTERVAL_MINUTES, Math.round(diffMinutes / 2))
+            totalHits >= TimeIntervalManager.#THRESHOLDS.highHits
+               ? Math.max(TimeIntervalManager.#THRESHOLDS.minIntervalMinutes, Math.round(diffMinutes / 2))
                : Math.max(
-                    TimeIntervalManager.#THRESHOLDS.MIN_INTERVAL_MINUTES,
-                    Math.round(diffMinutes - TimeIntervalManager.#THRESHOLDS.ADJUSTMENT_MINUTES),
+                    TimeIntervalManager.#THRESHOLDS.minIntervalMinutes,
+                    Math.round(diffMinutes - TimeIntervalManager.#THRESHOLDS.adjustmentMinutes),
                  );
 
          nextStart = currentDayjs.clone().add(reductionMinutes, 'minute');

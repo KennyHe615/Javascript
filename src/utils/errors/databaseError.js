@@ -7,9 +7,9 @@
 export default class DatabaseError extends Error {
    static #CLASS_NAME = 'DatabaseError';
    static #ERROR_TYPES = Object.freeze({
-      VALIDATION: 'SequelizeValidationError',
-      UNIQUE_CONSTRAINT: 'SequelizeUniqueConstraintError',
-      DATABASE: 'SequelizeDatabaseError',
+      validation: 'SequelizeValidationError',
+      uniqueConstraint: 'SequelizeUniqueConstraintError',
+      database: 'SequelizeDatabaseError',
    });
 
    #data;
@@ -37,7 +37,7 @@ export default class DatabaseError extends Error {
 
    /**
     * Converts the error into a normalized plain object.
-    * Extracts relevant information based on Sequelize error type.
+    * Extracts relevant information based on a Sequelize error type.
     *
     * @returns {Object} Normalized error object
     * @returns {string} return.className - Error class name
@@ -69,7 +69,7 @@ export default class DatabaseError extends Error {
     */
 
    /**
-    * Extracts detailed error information based on Sequelize error type.
+    * Extracts detailed error information based on a Sequelize error type.
     *
     * @private
     * @param {string} errorName - Sequelize error name
@@ -77,11 +77,11 @@ export default class DatabaseError extends Error {
     */
    #extractErrorDetails(errorName) {
       switch (errorName) {
-         case DatabaseError.#ERROR_TYPES.VALIDATION:
-         case DatabaseError.#ERROR_TYPES.UNIQUE_CONSTRAINT:
+         case DatabaseError.#ERROR_TYPES.validation:
+         case DatabaseError.#ERROR_TYPES.uniqueConstraint:
             return this.#extractValidationErrors();
 
-         case DatabaseError.#ERROR_TYPES.DATABASE:
+         case DatabaseError.#ERROR_TYPES.database:
             return this.#extractDatabaseErrors();
 
          default:

@@ -16,17 +16,17 @@ import logger from '../services/winstonSvc.js';
 export default class FileManager {
    static #CLASS_NAME = 'FileManager';
    static #CONFIG = Object.freeze({
-      SUPPORTED_EXTENSIONS: Object.freeze({
-         JSON: 'json',
-         TXT: 'txt',
+      supportedExtensions: Object.freeze({
+         json: 'json',
+         txt: 'txt',
       }),
-      MAX_RETRIES: 3,
-      RETRY_DELAY: 1000,
-      DEFAULT_JSON_INDENT: 3,
+      maxRetries: 3,
+      retryDelay: 1000,
+      defaultJsonIndent: 3,
    });
    static #FILE_ERRORS = Object.freeze({
-      NOT_FOUND: 'ENOENT',
-      FILE_EXISTS: 'EEXIST',
+      notFound: 'ENOENT',
+      fileExists: 'EEXIST',
    });
 
    /**
@@ -61,7 +61,7 @@ export default class FileManager {
     * @async
     * @param {string} filePath - Path to check (with or without extension)
     * @param {string|null} [fileExtension=null] - Optional file extension
-    * @returns {Promise<boolean>} True if path exists, false if not found
+    * @returns {Promise<boolean>} True if a path exists, false if not found
     * @throws {Object} CustomError if access check fails (errors other than ENOENT)
     */
    static async doesPathExistAsync(filePath, fileExtension = null) {
@@ -74,7 +74,7 @@ export default class FileManager {
 
          return true;
       } catch (err) {
-         if (err?.code === FileManager.#FILE_ERRORS.NOT_FOUND) return false;
+         if (err?.code === FileManager.#FILE_ERRORS.notFound) return false;
 
          throw new CustomError({
             message: 'Checking Path Existence ERROR!',
@@ -88,7 +88,7 @@ export default class FileManager {
 
    /**
     * Reads a file and returns its content.
-    * If file doesn't exist, creates it with default content (empty object for JSON, empty string for TXT).
+    * If a file doesn't exist, creates it with default content (empty object for JSON, empty string for TXT).
     *
     * @static
     * @async
@@ -106,17 +106,17 @@ export default class FileManager {
       try {
          const data = await fs.readFile(fullFilePath, 'utf-8');
 
-         return fileExtension === FileManager.#CONFIG.SUPPORTED_EXTENSIONS.TXT ? data : JSON.parse(data);
+         return fileExtension === FileManager.#CONFIG.supportedExtensions.txt ? data : JSON.parse(data);
       } catch (err) {
-         if (err?.code === FileManager.#FILE_ERRORS.NOT_FOUND) {
-            const defaultContent = fileExtension === FileManager.#CONFIG.SUPPORTED_EXTENSIONS.JSON ? {} : '';
+         if (err?.code === FileManager.#FILE_ERRORS.notFound) {
+            const defaultContent = fileExtension === FileManager.#CONFIG.supportedExtensions.json ? {} : '';
 
             try {
                await FileManager.#writeFileExclusiveAsync(filePath, fileExtension, defaultContent);
             } catch (writeErr) {
-               if (writeErr?.code === FileManager.#FILE_ERRORS.FILE_EXISTS) {
+               if (writeErr?.code === FileManager.#FILE_ERRORS.fileExists) {
                   const data = await fs.readFile(fullFilePath, 'utf-8');
-                  return fileExtension === FileManager.#CONFIG.SUPPORTED_EXTENSIONS.TXT ? data : JSON.parse(data);
+                  return fileExtension === FileManager.#CONFIG.supportedExtensions.txt ? data : JSON.parse(data);
                }
 
                throw new CustomError({
@@ -182,9 +182,9 @@ export default class FileManager {
 
       const fullFilePath = `${filePath}.${fileExtension}`;
       const fileContent =
-         fileExtension === FileManager.#CONFIG.SUPPORTED_EXTENSIONS.TXT
+         fileExtension === FileManager.#CONFIG.supportedExtensions.txt
             ? content
-            : JSON.stringify(content, null, FileManager.#CONFIG.DEFAULT_JSON_INDENT);
+            : JSON.stringify(content, null, FileManager.#CONFIG.defaultJsonIndent);
 
       await FileManager.#writeFileWithRetryAsync(fullFilePath, fileContent, filePath);
    }
@@ -242,7 +242,7 @@ export default class FileManager {
       FileManager.#validateString(fileName, 'fileName');
       FileManager.#validateArray(content, 'content');
 
-      const fullPath = `${fileName}.${FileManager.#CONFIG.SUPPORTED_EXTENSIONS.TXT}`;
+      const fullPath = `${fileName}.${FileManager.#CONFIG.supportedExtensions.txt}`;
 
       try {
          await FileManager.createDirectoryAsync(path.dirname(fullPath));
@@ -263,7 +263,7 @@ export default class FileManager {
 
    /**
     * Deletes a file.
-    * Logs a warning if file doesn't exist instead of throwing an error.
+    * Logs a warning if a file doesn't exist instead of throwing an error.
     *
     * @static
     * @async
@@ -276,7 +276,7 @@ export default class FileManager {
       try {
          await fs.unlink(filePath);
       } catch (err) {
-         if (err?.code === FileManager.#FILE_ERRORS.NOT_FOUND) {
+         if (err?.code === FileManager.#FILE_ERRORS.notFound) {
             logger.warn(`File not found for deletion: ${filePath}`);
 
             return;
@@ -300,7 +300,7 @@ export default class FileManager {
     * @async
     * @param {string} sourceFilePath - Full path of the source file (including extension)
     * @param {string} destFilePath - Full path of the destination file (including extension)
-    * @throws {Object} CustomError if moving fails or source file doesn't exist
+    * @throws {Object} CustomError if moving fails or a source file doesn't exist
     */
    static async moveFileAsync(sourceFilePath, destFilePath) {
       FileManager.#validateString(sourceFilePath, 'sourceFilePath');
@@ -332,7 +332,7 @@ export default class FileManager {
     * @async
     * @param {string} sourceFilePath - Full path of the source file (including extension)
     * @param {string} destFilePath - Full path of the destination file (including extension)
-    * @throws {Object} CustomError if copying fails or source file doesn't exist
+    * @throws {Object} CustomError if copying fails or a source file doesn't exist
     */
    static async copyFileAsync(sourceFilePath, destFilePath) {
       FileManager.#validateString(sourceFilePath, 'sourceFilePath');
@@ -450,7 +450,7 @@ export default class FileManager {
     * @throws {Object} CustomError if extension is invalid
     */
    static #validateExtension(extension) {
-      const values = Object.values(FileManager.#CONFIG.SUPPORTED_EXTENSIONS);
+      const values = Object.values(FileManager.#CONFIG.supportedExtensions);
       const isValid = values.includes(extension?.toLowerCase());
 
       if (!isValid) {
@@ -485,7 +485,7 @@ export default class FileManager {
 
    /**
     * Writes a file with automatic retry logic.
-    * Creates directory if it doesn't exist on ENOENT error.
+    * Creates a directory if it doesn't exist on ENOENT error.
     *
     * @private
     * @static
@@ -496,15 +496,15 @@ export default class FileManager {
     * @throws {Object} CustomError if all retry attempts fail
     */
    static async #writeFileWithRetryAsync(fullFilePath, content, basePath) {
-      for (let attempt = 1; attempt <= FileManager.#CONFIG.MAX_RETRIES; attempt++) {
+      for (let attempt = 1; attempt <= FileManager.#CONFIG.maxRetries; attempt++) {
          try {
             await fs.writeFile(fullFilePath, content, 'utf-8');
 
             return;
          } catch (err) {
-            if (err?.code === FileManager.#FILE_ERRORS.NOT_FOUND && attempt < FileManager.#CONFIG.MAX_RETRIES) {
+            if (err?.code === FileManager.#FILE_ERRORS.notFound && attempt < FileManager.#CONFIG.maxRetries) {
                await FileManager.createDirectoryAsync(path.dirname(basePath));
-               await setTimeout(FileManager.#CONFIG.RETRY_DELAY);
+               await setTimeout(FileManager.#CONFIG.retryDelay);
                continue;
             }
 
@@ -538,11 +538,11 @@ export default class FileManager {
    static async #writeFileExclusiveAsync(filePath, fileExtension, content) {
       const fullFilePath = `${filePath}.${fileExtension}`;
       const fileContent =
-         fileExtension === FileManager.#CONFIG.SUPPORTED_EXTENSIONS.TXT
+         fileExtension === FileManager.#CONFIG.supportedExtensions.txt
             ? content
-            : JSON.stringify(content, null, FileManager.#CONFIG.DEFAULT_JSON_INDENT);
+            : JSON.stringify(content, null, FileManager.#CONFIG.defaultJsonIndent);
 
-      for (let attempt = 1; attempt <= FileManager.#CONFIG.MAX_RETRIES; attempt++) {
+      for (let attempt = 1; attempt <= FileManager.#CONFIG.maxRetries; attempt++) {
          try {
             await FileManager.createDirectoryAsync(path.dirname(filePath));
 
@@ -552,10 +552,10 @@ export default class FileManager {
 
             return;
          } catch (err) {
-            if (err?.code === FileManager.#FILE_ERRORS.FILE_EXISTS) throw err;
+            if (err?.code === FileManager.#FILE_ERRORS.fileExists) throw err;
 
-            if (err?.code === FileManager.#FILE_ERRORS.NOT_FOUND && attempt < FileManager.#CONFIG.MAX_RETRIES) {
-               await setTimeout(FileManager.#CONFIG.RETRY_DELAY);
+            if (err?.code === FileManager.#FILE_ERRORS.notFound && attempt < FileManager.#CONFIG.maxRetries) {
+               await setTimeout(FileManager.#CONFIG.retryDelay);
                continue;
             }
 
@@ -603,12 +603,12 @@ export default class FileManager {
     * @param {string} zipName - Name of the zip file (without extension)
     */
    static #createAndWriteZip(folderPath, fileList, zipName) {
-      const zip = new admZip();
+      const zip = new admZip(null, null);
 
       fileList.forEach((file) => {
          zip.addLocalFile(path.join(folderPath, file));
       });
 
-      zip.writeZip(path.join(folderPath, `${zipName}.zip`));
+      zip.writeZip(path.join(folderPath, `${zipName}.zip`), null);
    }
 }

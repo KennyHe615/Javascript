@@ -10,24 +10,24 @@ import CustomError from './errors/customError.js';
 export default class ErrorEmailGenerator {
    static #CLASS_NAME = 'ErrorEmailGenerator';
    static #COLORS = Object.freeze({
-      ERROR: '#d32f2f',
-      WARNING: '#ffc107',
-      WARNING_TEXT: '#856404',
-      INFO: '#1976d2',
-      TEXT_PRIMARY: '#333',
-      BG_LIGHT: '#f5f5f5',
-      BG_WARNING: '#fff3cd',
-      BG_CODE: '#f8f9fa',
+      error: '#d32f2f',
+      warning: '#ffc107',
+      warningText: '#856404',
+      info: '#1976d2',
+      textPrimary: '#333',
+      bgLight: '#f5f5f5',
+      bgWarning: '#fff3cd',
+      bgCode: '#f8f9fa',
    });
    static #STYLES = Object.freeze({
-      CONTAINER: 'font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;',
-      HEADING: `color: ${ErrorEmailGenerator.#COLORS.ERROR}; border-bottom: 2px solid ${ErrorEmailGenerator.#COLORS.ERROR}; padding-bottom: 10px;`,
-      INFO_BOX: `background-color: ${ErrorEmailGenerator.#COLORS.BG_LIGHT}; padding: 15px; border-radius: 5px; margin: 20px 0;`,
-      WARNING_BOX: `background-color: ${ErrorEmailGenerator.#COLORS.BG_WARNING}; padding: 15px; border-radius: 5px; border-left: 4px solid ${ErrorEmailGenerator.#COLORS.WARNING};`,
-      CODE_BLOCK: `background-color: ${ErrorEmailGenerator.#COLORS.BG_CODE}; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 12px; margin-top: 10px;`,
-      SUMMARY: `cursor: pointer; font-weight: bold; color: ${ErrorEmailGenerator.#COLORS.INFO};`,
-      SECTION_HEADING: `margin-top: 0; color: ${ErrorEmailGenerator.#COLORS.TEXT_PRIMARY};`,
-      WARNING_HEADING: `margin-top: 0; color: ${ErrorEmailGenerator.#COLORS.WARNING_TEXT};`,
+      container: 'font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;',
+      heading: `color: ${ErrorEmailGenerator.#COLORS.error}; border-bottom: 2px solid ${ErrorEmailGenerator.#COLORS.error}; padding-bottom: 10px;`,
+      infoBox: `background-color: ${ErrorEmailGenerator.#COLORS.bgLight}; padding: 15px; border-radius: 5px; margin: 20px 0;`,
+      warningBox: `background-color: ${ErrorEmailGenerator.#COLORS.bgWarning}; padding: 15px; border-radius: 5px; border-left: 4px solid ${ErrorEmailGenerator.#COLORS.warning};`,
+      codeBlock: `background-color: ${ErrorEmailGenerator.#COLORS.bgCode}; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 12px; margin-top: 10px;`,
+      summary: `cursor: pointer; font-weight: bold; color: ${ErrorEmailGenerator.#COLORS.info};`,
+      sectionHeading: `margin-top: 0; color: ${ErrorEmailGenerator.#COLORS.textPrimary};`,
+      warningHeading: `margin-top: 0; color: ${ErrorEmailGenerator.#COLORS.warningText};`,
    });
    static #JSON_INDENT = 3;
    static #MAX_ERROR_LENGTH = 10000; // Prevent extremely large error object
@@ -93,27 +93,27 @@ export default class ErrorEmailGenerator {
          const errorDetails = ErrorEmailGenerator.#stringifyError(errorObj);
 
          return `           
-            <article style="${ErrorEmailGenerator.#STYLES.CONTAINER}">
+            <article style="${ErrorEmailGenerator.#STYLES.container}">
                <header>
-                  <h2 style="${ErrorEmailGenerator.#STYLES.HEADING}">Scheduled Job Error Alert</h2>
+                  <h2 style="${ErrorEmailGenerator.#STYLES.heading}">Scheduled Job Error Alert</h2>
                </header>
       
-               <section style="${ErrorEmailGenerator.#STYLES.INFO_BOX}">
-                  <h3 style="${ErrorEmailGenerator.#STYLES.SECTION_HEADING}">Job Information</h3>
+               <section style="${ErrorEmailGenerator.#STYLES.infoBox}">
+                  <h3 style="${ErrorEmailGenerator.#STYLES.sectionHeading}">Job Information</h3>
                   <p><strong>Job Name:</strong> ${safeServiceName}</p>
                   <p><strong>Environment:</strong> ${safeRunningEnv}</p>
                   <p><strong>Project Path:</strong> ${safeProjectPath}</p>
                </section>
       
-               <aside style="${ErrorEmailGenerator.#STYLES.WARNING_BOX}">
-                  <h3 style="${ErrorEmailGenerator.#STYLES.WARNING_HEADING}">Action Required</h3>
+               <aside style="${ErrorEmailGenerator.#STYLES.warningBox}">
+                  <h3 style="${ErrorEmailGenerator.#STYLES.warningHeading}">Action Required</h3>
                   <p>Please check the application logs for detailed error information and take appropriate action.</p>
                </aside>
       
                <section style="margin-top: 20px;">
                   <details>
-                     <summary style="${ErrorEmailGenerator.#STYLES.SUMMARY}">Click to view error details</summary>
-                     <pre style="${ErrorEmailGenerator.#STYLES.CODE_BLOCK}">${ErrorEmailGenerator.#escapeHtml(errorDetails)}</pre>
+                     <summary style="${ErrorEmailGenerator.#STYLES.summary}">Click to view error details</summary>
+                     <pre style="${ErrorEmailGenerator.#STYLES.codeBlock}">${ErrorEmailGenerator.#escapeHtml(errorDetails)}</pre>
                   </details>
                </section>
             </article>
@@ -196,7 +196,7 @@ export default class ErrorEmailGenerator {
    static #sanitizeText(text) {
       if (typeof text !== 'string') return String(text || '');
 
-      // Remove control characters except newline and tab
+      // Remove control characters except the newline and tab
       return text.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '');
    }
 }
