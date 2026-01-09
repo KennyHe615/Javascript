@@ -1,6 +1,5 @@
 import { setTimeout } from 'timers/promises';
 import logger from './winstonSvc.js';
-import tokenSvc from './tokenSvc.js';
 import CustomError from '../utils/errors/customError.js';
 import Constants from '../utils/constants.js';
 import AxiosFactory from '../factories/axiosFactory.js';
@@ -14,15 +13,16 @@ import AxiosFactory from '../factories/axiosFactory.js';
  */
 class AxiosSvc {
    static #CLASS_NAME = 'AxiosSvc';
-
-   #instance;
-   #retryConfig;
    static DEFAULT_RETRY_LIMIT = 3;
    static DEFAULT_RETRY_DELAYS = Object.freeze({
       default: 10000,
       rateLimited: 60000,
       serverError: 5000,
    });
+
+   #instance;
+   #retryConfig;
+   #tokenProvider;
 
    /**
     * Creates a new AxiosService instance.
@@ -31,10 +31,10 @@ class AxiosSvc {
     * @param {Object} [retryConfig] - Retry configuration options
     * @param {number} [retryConfig.retryLimit] - Maximum number of retry attempts
     * @param {Object} [retryConfig.retryDelays] - Delay configuration for retries
+    * @param {Object} [tokenProvider] - Token provider service (optional for DI, defaults to lazy-loaded tokenSvc)
     */
-   constructor(axiosInstance = null, retryConfig = {}) {
+   constructor(axiosInstance = null, retryConfig = {}, tokenProvider = null) {
       this.#instance = axiosInstance ?? AxiosFactory.getInstance();
-
       this.#retryConfig = {
          retryLimit: retryConfig.retryLimit ?? AxiosSvc.DEFAULT_RETRY_LIMIT,
          retryDelays: {
@@ -42,6 +42,7 @@ class AxiosSvc {
             ...retryConfig.retryDelays,
          },
       };
+      this.#tokenProvider = tokenProvider;
 
       // Freeze retry config to prevent mutations
       Object.freeze(this.#retryConfig.retryDelays);
@@ -67,7 +68,7 @@ class AxiosSvc {
 
       for (let retryCounter = 1; retryCounter <= this.#retryConfig.retryLimit; retryCounter++) {
          try {
-            const token = axiosRequest.headers?.Authorization ? null : await tokenSvc.getValidTokenAsync();
+            const token = axiosRequest.headers?.Authorization ? null : await this.#getTokenAsync();
 
             const request = AxiosSvc.#buildRequest(axiosRequest, token);
 
@@ -97,6 +98,23 @@ class AxiosSvc {
    /**
     * ==================== *** Private Methods *** ====================
     */
+
+   /**
+    * Lazy loads token provider to avoid circular dependency.
+    * Uses injected provider if available, otherwise dynamically imports tokenSvc.
+    *
+    * @private
+    * @async
+    * @returns {Promise<string>} Valid OAuth access token
+    */
+   async #getTokenAsync() {
+      if (!this.#tokenProvider) {
+         const { default: tokenSvc } = await import('./tokenSvc.js');
+         this.#tokenProvider = tokenSvc;
+      }
+
+      return this.#tokenProvider.getValidTokenAsync();
+   }
 
    /**
     * Builds a complete request configuration with headers and authentication.
@@ -182,8 +200,14 @@ class AxiosSvc {
          }
 
          case 401:
-            logger.info('Token expired - refreshing and retrying');
-            await tokenSvc.cleanTokenAsync();
+            logger.debug('Token expired - refreshing and retrying');
+
+            if (!this.#tokenProvider) {
+               const { default: tokenSvc } = await import('./tokenSvc.js');
+               this.#tokenProvider = tokenSvc;
+            }
+
+            await this.#tokenProvider.cleanTokenAsync();
             await setTimeout(this.#retryConfig.retryDelays.default);
             return true;
 
@@ -225,7 +249,7 @@ const axiosSvc = new AxiosSvc();
 // Export singleton as default (most common usage)
 export default axiosSvc;
 
-// Also export the class for DI scenarios (testing, custom instances)
+// Also, export the class for DI scenarios (testing, custom instances)
 export { AxiosSvc };
 
 // Sample Usage:

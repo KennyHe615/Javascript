@@ -40,7 +40,7 @@ describe('AxiosSvc', () => {
 
    beforeEach(() => {
       mockAxiosInstance = vi.fn();
-      axiosSvc = new AxiosSvc(mockAxiosInstance);
+      axiosSvc = new AxiosSvc(mockAxiosInstance, {}, tokenSvc);
 
       vi.clearAllMocks();
       tokenSvc.getValidTokenAsync.mockResolvedValue('mock-token-123');
@@ -235,7 +235,7 @@ describe('AxiosSvc', () => {
          expect(response).toEqual(mockResponse);
          expect(tokenSvc.cleanTokenAsync).toHaveBeenCalledTimes(1);
          expect(tokenSvc.getValidTokenAsync).toHaveBeenCalledTimes(2);
-         expect(logger.info).toHaveBeenCalledWith('Token expired - refreshing and retrying');
+         expect(logger.debug).toHaveBeenCalledWith('Token expired - refreshing and retrying');
       });
    });
 
