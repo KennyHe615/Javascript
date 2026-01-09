@@ -1,6 +1,7 @@
 import logger from './winstonSvc.js';
 import DatabaseError from '../utils/errors/databaseError.js';
 import CustomError from '../utils/errors/customError.js';
+import Constants from '../utils/constants.js';
 
 /**
  * Service class for managing Sequelize database operations.
@@ -72,6 +73,56 @@ export default class SequelizeSvc {
          logger.error(`Database disconnection error: ${JSON.stringify({ database: dbName, error: err.message }, null, 3)}`);
 
          throw new DatabaseError(undefined, err).toObject();
+      }
+   }
+
+   /**
+    * Synchronizes a Sequelize model with the database schema.
+    * Only executes in development/local environments. In production, logs a warning instead.
+    *
+    * @static
+    * @async
+    * @param {import('sequelize').Model} model - Sequelize model to sync
+    * @param {Object} [options={}] - Sync options
+    * @param {boolean} [options.alter=true] - Alters existing tables to match model (safer)
+    * @param {boolean} [options.force=false] - Drops and recreates tables (destructive)
+    * @returns {Promise<void>}
+    * @throws {CustomError} When sync operation fails
+    * @example
+    * await SequelizeSvc.syncModelAsync(UserModel);
+    * await SequelizeSvc.syncModelAsync(UserModel, { alter: true });
+    * await SequelizeSvc.syncModelAsync(UserModel, { force: true });
+    */
+   static async syncModelAsync(model, options) {
+      const env = Constants.RUNNING_ENVIRONMENT?.toLowerCase() || '';
+      const isDevelopment = env.startsWith('dev') || env.startsWith('local');
+      const modelName = model?.getTableName?.() || model?.NAME || 'Unknown';
+
+      if (!isDevelopment) {
+         logger.warn(
+            `Model sync is disabled for ${modelName} in ${Constants.RUNNING_ENVIRONMENT} environment. Schema changes must be applied manually.`,
+         );
+
+         return;
+      }
+
+      const syncOptions = {
+         alter: options?.alter ?? true,
+         force: options?.force ?? false,
+      };
+
+      try {
+         await model.sync(syncOptions);
+
+         logger.debug(`Model ${modelName} synced successfully with options: ${JSON.stringify(syncOptions)}`);
+      } catch (err) {
+         throw new CustomError({
+            message: 'Failed to sync model',
+            className: SequelizeSvc.#CLASS_NAME,
+            functionName: 'syncModelAsync',
+            parameters: { modelName },
+            details: err,
+         }).toObject();
       }
    }
 
