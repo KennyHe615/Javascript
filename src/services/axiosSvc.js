@@ -208,7 +208,6 @@ class AxiosSvc {
             }
 
             await this.#tokenProvider.cleanTokenAsync();
-            await setTimeout(this.#retryConfig.retryDelays.default);
             return true;
 
          case 429:

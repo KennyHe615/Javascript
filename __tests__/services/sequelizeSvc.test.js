@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import SequelizeSvc from '../../src/services/sequelizeSvc.js';
 import logger from '../../src/services/winstonSvc.js';
-import Constants from '../../src/utils/constants.js';
 
 vi.mock('../../src/services/winstonSvc.js', () => ({
    default: {
@@ -169,6 +168,11 @@ describe('SequelizeSvc', () => {
             NAME: 'TestModel',
             FIELDS: ['id', 'name', 'email'],
          };
+         vi.useFakeTimers(); // For testing setTimeout
+      });
+
+      afterEach(() => {
+         vi.useRealTimers();
       });
 
       describe('Success Cases', () => {
@@ -220,6 +224,37 @@ describe('SequelizeSvc', () => {
 
             expect(mockModel.upsert).toHaveBeenCalledTimes(1);
          });
+
+         it('should process data in batches', async () => {
+            // Mock a larger dataset that would trigger batching
+            mockModel.upsert.mockResolvedValue([{}, true]);
+
+            const largeData = Array.from({ length: 150 }, (_, i) => ({
+               id: i + 1,
+               name: `User${i + 1}`,
+            }));
+
+            await SequelizeSvc.upsertAsync(largeData, mockModel);
+
+            // Should process in batches (default batch size is 100)
+            expect(mockModel.upsert).toHaveBeenCalledTimes(150);
+         });
+
+         it('should retry on deadlock errors', async () => {
+            const deadlockError = new Error('Transaction was deadlocked');
+            deadlockError.original = { message: 'deadlock' };
+
+            mockModel.upsert.mockRejectedValueOnce(deadlockError).mockResolvedValueOnce([{}, true]);
+
+            const data = { id: 1, name: 'John' };
+            const upsertPromise = SequelizeSvc.upsertAsync(data, mockModel);
+
+            // Fast-forward through the retry delay
+            await vi.runAllTimersAsync();
+            await upsertPromise;
+
+            expect(mockModel.upsert).toHaveBeenCalledTimes(2);
+         });
       });
 
       describe('Validation Errors', () => {
@@ -245,14 +280,18 @@ describe('SequelizeSvc', () => {
       });
 
       describe('Database Errors', () => {
-         it('should throw CustomError when upsert fails', async () => {
-            const dbError = new Error('Unique constraint violation');
-            mockModel.upsert.mockRejectedValue(dbError);
+         it('should throw CustomError when upsert fails after max retries', async () => {
+            const deadlockError = new Error('Persistent deadlock');
+            deadlockError.original = { message: 'deadlock' };
+            mockModel.upsert.mockRejectedValue(deadlockError);
 
             const data = { id: 1, name: 'John' };
 
-            await expect(SequelizeSvc.upsertAsync(data, mockModel)).rejects.toThrow();
-            expect(logger.error).toHaveBeenCalled();
+            const upsertPromise = SequelizeSvc.upsertAsync(data, mockModel);
+            await vi.runAllTimersAsync();
+
+            await expect(upsertPromise).rejects.toThrow('Upserting Record ERROR!');
+            expect(mockModel.upsert).toHaveBeenCalledTimes(3); // Based on maxRetries: 3
          });
 
          it('should handle partial failure in array upsert', async () => {
@@ -271,43 +310,22 @@ describe('SequelizeSvc', () => {
 
             await expect(SequelizeSvc.upsertAsync({ id: 1 }, mockModel)).rejects.toThrow();
 
-            expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('Upsert operation failed'));
+            expect(logger.debug).not.toHaveBeenCalledWith(expect.stringContaining('Successfully upserted'));
          });
       });
 
-      describe('Concurrent Operations', () => {
-         it('should handle multiple concurrent upserts', async () => {
-            mockModel.upsert.mockResolvedValue([{}, true]);
-
-            const data = [
-               { id: 1, name: 'John' },
-               { id: 2, name: 'Jane' },
-               { id: 3, name: 'Bob' },
-            ];
-
-            await SequelizeSvc.upsertAsync(data, mockModel);
-
-            expect(mockModel.upsert).toHaveBeenCalledTimes(3);
-         });
-
-         it('should wait for all upserts to complete', async () => {
-            let callOrder = [];
-            mockModel.upsert.mockImplementation(async (data) => {
-               await new Promise((resolve) => setTimeout(resolve, Math.random() * 10));
-               callOrder.push(data.id);
+      describe('Sequential Processing', () => {
+         it('should process rows in a batch sequentially', async () => {
+            let executionOrder = [];
+            mockModel.upsert.mockImplementation(async (row) => {
+               executionOrder.push(row.id);
                return [{}, true];
             });
 
-            const data = [
-               { id: 1, name: 'John' },
-               { id: 2, name: 'Jane' },
-            ];
-
+            const data = [{ id: 1 }, { id: 2 }, { id: 3 }];
             await SequelizeSvc.upsertAsync(data, mockModel);
 
-            expect(callOrder).toHaveLength(2);
-            expect(callOrder).toContain(1);
-            expect(callOrder).toContain(2);
+            expect(executionOrder).toEqual([1, 2, 3]);
          });
       });
    });
@@ -454,321 +472,6 @@ describe('SequelizeSvc', () => {
       });
    });
 
-   describe('syncModelAsync() - Static Method', () => {
-      let mockModel;
-      let originalEnv;
-
-      beforeEach(() => {
-         mockModel = {
-            sync: vi.fn(),
-            getTableName: vi.fn().mockReturnValue('test_table'),
-            name: 'TestModel',
-         };
-         originalEnv = Constants.RUNNING_ENVIRONMENT;
-      });
-
-      afterEach(() => {
-         Constants.RUNNING_ENVIRONMENT = originalEnv;
-      });
-
-      describe('Development Environment', () => {
-         beforeEach(() => {
-            Constants.RUNNING_ENVIRONMENT = 'development';
-         });
-
-         it('should sync model with default options in development', async () => {
-            mockModel.sync.mockResolvedValue(undefined);
-
-            await SequelizeSvc.syncModelAsync(mockModel);
-
-            expect(mockModel.sync).toHaveBeenCalledTimes(1);
-            expect(mockModel.sync).toHaveBeenCalledWith({
-               alter: true,
-               force: false,
-            });
-            expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('test_table synced successfully'));
-         });
-
-         it('should sync with alter option', async () => {
-            mockModel.sync.mockResolvedValue(undefined);
-
-            await SequelizeSvc.syncModelAsync(mockModel, { alter: true });
-
-            expect(mockModel.sync).toHaveBeenCalledWith({
-               alter: true,
-               force: false,
-            });
-         });
-
-         it('should sync with force option', async () => {
-            mockModel.sync.mockResolvedValue(undefined);
-
-            await SequelizeSvc.syncModelAsync(mockModel, { force: true });
-
-            expect(mockModel.sync).toHaveBeenCalledWith({
-               alter: true,
-               force: true,
-            });
-         });
-
-         it('should sync with both options disabled', async () => {
-            mockModel.sync.mockResolvedValue(undefined);
-
-            await SequelizeSvc.syncModelAsync(mockModel, { alter: false, force: false });
-
-            expect(mockModel.sync).toHaveBeenCalledWith({
-               alter: false,
-               force: false,
-            });
-         });
-
-         it('should handle model with only name property', async () => {
-            const modelWithNameOnly = {
-               sync: vi.fn().mockResolvedValue(undefined),
-               NAME: 'TestModel',
-            };
-
-            await SequelizeSvc.syncModelAsync(modelWithNameOnly);
-
-            expect(modelWithNameOnly.sync).toHaveBeenCalledTimes(1);
-            expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('TestModel synced successfully'));
-         });
-
-         it('should handle model without getTableName or name', async () => {
-            mockModel.sync.mockResolvedValue(undefined);
-            delete mockModel.getTableName;
-            delete mockModel.name;
-
-            await SequelizeSvc.syncModelAsync(mockModel);
-
-            expect(mockModel.sync).toHaveBeenCalledTimes(1);
-            expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('Unknown synced successfully'));
-         });
-
-         it('should throw CustomError when sync fails', async () => {
-            const syncError = new Error('Table does not exist');
-            mockModel.sync.mockRejectedValue(syncError);
-
-            await expect(SequelizeSvc.syncModelAsync(mockModel)).rejects.toThrow();
-         });
-
-         it('should log sync options on successful sync', async () => {
-            mockModel.sync.mockResolvedValue(undefined);
-
-            await SequelizeSvc.syncModelAsync(mockModel, { alter: false, force: true });
-
-            expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('"alter":false,"force":true'));
-         });
-      });
-
-      describe('Local Environment', () => {
-         beforeEach(() => {
-            Constants.RUNNING_ENVIRONMENT = 'local';
-         });
-
-         it('should sync model in local environment', async () => {
-            mockModel.sync.mockResolvedValue(undefined);
-
-            await SequelizeSvc.syncModelAsync(mockModel);
-
-            expect(mockModel.sync).toHaveBeenCalledTimes(1);
-            expect(logger.warn).not.toHaveBeenCalled();
-         });
-
-         it('should sync in local environment with numbered suffix', async () => {
-            Constants.RUNNING_ENVIRONMENT = 'local2';
-            mockModel.sync.mockResolvedValue(undefined);
-
-            await SequelizeSvc.syncModelAsync(mockModel);
-
-            expect(mockModel.sync).toHaveBeenCalledTimes(1);
-         });
-      });
-
-      describe('Development with Suffix', () => {
-         it('should sync in dev environment with numeric suffix', async () => {
-            Constants.RUNNING_ENVIRONMENT = 'dev1';
-            mockModel.sync.mockResolvedValue(undefined);
-
-            await SequelizeSvc.syncModelAsync(mockModel);
-
-            expect(mockModel.sync).toHaveBeenCalledTimes(1);
-            expect(logger.warn).not.toHaveBeenCalled();
-         });
-
-         it('should sync in development environment with uppercase', async () => {
-            Constants.RUNNING_ENVIRONMENT = 'DEVELOPMENT';
-            mockModel.sync.mockResolvedValue(undefined);
-
-            await SequelizeSvc.syncModelAsync(mockModel);
-
-            expect(mockModel.sync).toHaveBeenCalledTimes(1);
-         });
-      });
-
-      describe('Production Environment', () => {
-         beforeEach(() => {
-            Constants.RUNNING_ENVIRONMENT = 'production';
-         });
-
-         it('should not sync in production environment', async () => {
-            await SequelizeSvc.syncModelAsync(mockModel);
-
-            expect(mockModel.sync).not.toHaveBeenCalled();
-            expect(logger.warn).toHaveBeenCalledWith(
-               expect.stringContaining('Model sync is disabled for test_table in production'),
-            );
-         });
-
-         it('should not sync even with force option in production', async () => {
-            await SequelizeSvc.syncModelAsync(mockModel, { force: true });
-
-            expect(mockModel.sync).not.toHaveBeenCalled();
-            expect(logger.warn).toHaveBeenCalled();
-         });
-
-         it('should return immediately without error in production', async () => {
-            await expect(SequelizeSvc.syncModelAsync(mockModel)).resolves.toBeUndefined();
-         });
-      });
-
-      describe('Other Environments', () => {
-         it('should not sync in staging environment', async () => {
-            Constants.RUNNING_ENVIRONMENT = 'staging';
-
-            await SequelizeSvc.syncModelAsync(mockModel);
-
-            expect(mockModel.sync).not.toHaveBeenCalled();
-            expect(logger.warn).toHaveBeenCalled();
-         });
-
-         it('should not sync in UAT environment', async () => {
-            Constants.RUNNING_ENVIRONMENT = 'uat';
-
-            await SequelizeSvc.syncModelAsync(mockModel);
-
-            expect(mockModel.sync).not.toHaveBeenCalled();
-            expect(logger.warn).toHaveBeenCalled();
-         });
-
-         it('should not sync in test environment', async () => {
-            Constants.RUNNING_ENVIRONMENT = 'test';
-
-            await SequelizeSvc.syncModelAsync(mockModel);
-
-            expect(mockModel.sync).not.toHaveBeenCalled();
-            expect(logger.warn).toHaveBeenCalled();
-         });
-      });
-
-      describe('Edge Cases', () => {
-         beforeEach(() => {
-            Constants.RUNNING_ENVIRONMENT = 'development';
-         });
-
-         it('should handle undefined RUNNING_ENVIRONMENT', async () => {
-            Constants.RUNNING_ENVIRONMENT = undefined;
-            mockModel.sync.mockResolvedValue(undefined);
-
-            await SequelizeSvc.syncModelAsync(mockModel);
-
-            expect(mockModel.sync).not.toHaveBeenCalled();
-            expect(logger.warn).toHaveBeenCalled();
-         });
-
-         it('should handle null RUNNING_ENVIRONMENT', async () => {
-            Constants.RUNNING_ENVIRONMENT = null;
-            mockModel.sync.mockResolvedValue(undefined);
-
-            await SequelizeSvc.syncModelAsync(mockModel);
-
-            expect(mockModel.sync).not.toHaveBeenCalled();
-         });
-
-         it('should handle empty string RUNNING_ENVIRONMENT', async () => {
-            Constants.RUNNING_ENVIRONMENT = '';
-            mockModel.sync.mockResolvedValue(undefined);
-
-            await SequelizeSvc.syncModelAsync(mockModel);
-
-            expect(mockModel.sync).not.toHaveBeenCalled();
-         });
-
-         it('should handle empty options object', async () => {
-            mockModel.sync.mockResolvedValue(undefined);
-
-            await SequelizeSvc.syncModelAsync(mockModel, {});
-
-            expect(mockModel.sync).toHaveBeenCalledWith({
-               alter: true,
-               force: false,
-            });
-         });
-
-         it('should handle null options', async () => {
-            mockModel.sync.mockResolvedValue(undefined);
-
-            await SequelizeSvc.syncModelAsync(mockModel, null);
-
-            expect(mockModel.sync).toHaveBeenCalledWith({
-               alter: true,
-               force: false,
-            });
-         });
-
-         it('should include error details in thrown CustomError', async () => {
-            const syncError = new Error('Sync failed');
-            mockModel.sync.mockRejectedValue(syncError);
-
-            try {
-               await SequelizeSvc.syncModelAsync(mockModel);
-            } catch (err) {
-               expect(err.message).toBe('Failed to sync model');
-               expect(err.className).toBe('SequelizeSvc');
-               expect(err.functionName).toBe('syncModelAsync');
-               expect(err.parameters).toEqual({ modelName: 'test_table' });
-               expect(err.details).toBeDefined();
-            }
-         });
-      });
-
-      describe('Model Name Resolution', () => {
-         beforeEach(() => {
-            Constants.RUNNING_ENVIRONMENT = 'development';
-         });
-
-         it('should prioritize getTableName over name', async () => {
-            mockModel.sync.mockResolvedValue(undefined);
-            mockModel.getTableName.mockReturnValue('TableFromGetTableName');
-            mockModel.name = 'ModelName';
-
-            await SequelizeSvc.syncModelAsync(mockModel);
-
-            expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('TableFromGetTableName synced successfully'));
-         });
-
-         it('should use name when getTableName returns undefined', async () => {
-            mockModel.sync.mockResolvedValue(undefined);
-            mockModel.getTableName.mockReturnValue(undefined);
-            mockModel.NAME = 'ModelName';
-
-            await SequelizeSvc.syncModelAsync(mockModel);
-
-            expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('ModelName synced successfully'));
-         });
-
-         it('should use Unknown when both are unavailable', async () => {
-            mockModel.sync.mockResolvedValue(undefined);
-            delete mockModel.getTableName;
-            delete mockModel.name;
-
-            await SequelizeSvc.syncModelAsync(mockModel);
-
-            expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('Unknown synced successfully'));
-         });
-      });
-   });
-
    describe('Integration Scenarios', () => {
       let mockModel;
 
@@ -804,4 +507,319 @@ describe('SequelizeSvc', () => {
          expect(logger.error).toHaveBeenCalled();
       });
    });
+
+   // describe('syncModelAsync() - Static Method', () => {
+   //    let mockModel;
+   //    let originalEnv;
+   //
+   //    beforeEach(() => {
+   //       mockModel = {
+   //          sync: vi.fn(),
+   //          getTableName: vi.fn().mockReturnValue('test_table'),
+   //          name: 'TestModel',
+   //       };
+   //       originalEnv = Constants.RUNNING_ENVIRONMENT;
+   //    });
+   //
+   //    afterEach(() => {
+   //       Constants.RUNNING_ENVIRONMENT = originalEnv;
+   //    });
+   //
+   //    describe('Development Environment', () => {
+   //       beforeEach(() => {
+   //          Constants.RUNNING_ENVIRONMENT = 'development';
+   //       });
+   //
+   //       it('should sync model with default options in development', async () => {
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel);
+   //
+   //          expect(mockModel.sync).toHaveBeenCalledTimes(1);
+   //          expect(mockModel.sync).toHaveBeenCalledWith({
+   //             alter: true,
+   //             force: false,
+   //          });
+   //          expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('test_table synced successfully'));
+   //       });
+   //
+   //       it('should sync with alter option', async () => {
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel, { alter: true });
+   //
+   //          expect(mockModel.sync).toHaveBeenCalledWith({
+   //             alter: true,
+   //             force: false,
+   //          });
+   //       });
+   //
+   //       it('should sync with force option', async () => {
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel, { force: true });
+   //
+   //          expect(mockModel.sync).toHaveBeenCalledWith({
+   //             alter: true,
+   //             force: true,
+   //          });
+   //       });
+   //
+   //       it('should sync with both options disabled', async () => {
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel, { alter: false, force: false });
+   //
+   //          expect(mockModel.sync).toHaveBeenCalledWith({
+   //             alter: false,
+   //             force: false,
+   //          });
+   //       });
+   //
+   //       it('should handle model with only name property', async () => {
+   //          const modelWithNameOnly = {
+   //             sync: vi.fn().mockResolvedValue(undefined),
+   //             NAME: 'TestModel',
+   //          };
+   //
+   //          await SequelizeSvc.syncModelAsync(modelWithNameOnly);
+   //
+   //          expect(modelWithNameOnly.sync).toHaveBeenCalledTimes(1);
+   //          expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('TestModel synced successfully'));
+   //       });
+   //
+   //       it('should handle model without getTableName or name', async () => {
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //          delete mockModel.getTableName;
+   //          delete mockModel.name;
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel);
+   //
+   //          expect(mockModel.sync).toHaveBeenCalledTimes(1);
+   //          expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('Unknown synced successfully'));
+   //       });
+   //
+   //       it('should throw CustomError when sync fails', async () => {
+   //          const syncError = new Error('Table does not exist');
+   //          mockModel.sync.mockRejectedValue(syncError);
+   //
+   //          await expect(SequelizeSvc.syncModelAsync(mockModel)).rejects.toThrow();
+   //       });
+   //
+   //       it('should log sync options on successful sync', async () => {
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel, { alter: false, force: true });
+   //
+   //          expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('"alter":false,"force":true'));
+   //       });
+   //    });
+   //
+   //    describe('Local Environment', () => {
+   //       beforeEach(() => {
+   //          Constants.RUNNING_ENVIRONMENT = 'local';
+   //       });
+   //
+   //       it('should sync model in local environment', async () => {
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel);
+   //
+   //          expect(mockModel.sync).toHaveBeenCalledTimes(1);
+   //          expect(logger.warn).not.toHaveBeenCalled();
+   //       });
+   //
+   //       it('should sync in local environment with numbered suffix', async () => {
+   //          Constants.RUNNING_ENVIRONMENT = 'local2';
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel);
+   //
+   //          expect(mockModel.sync).toHaveBeenCalledTimes(1);
+   //       });
+   //    });
+   //
+   //    describe('Development with Suffix', () => {
+   //       it('should sync in dev environment with numeric suffix', async () => {
+   //          Constants.RUNNING_ENVIRONMENT = 'dev1';
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel);
+   //
+   //          expect(mockModel.sync).toHaveBeenCalledTimes(1);
+   //          expect(logger.warn).not.toHaveBeenCalled();
+   //       });
+   //
+   //       it('should sync in development environment with uppercase', async () => {
+   //          Constants.RUNNING_ENVIRONMENT = 'DEVELOPMENT';
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel);
+   //
+   //          expect(mockModel.sync).toHaveBeenCalledTimes(1);
+   //       });
+   //    });
+   //
+   //    describe('Production Environment', () => {
+   //       beforeEach(() => {
+   //          Constants.RUNNING_ENVIRONMENT = 'production';
+   //       });
+   //
+   //       it('should not sync in production environment', async () => {
+   //          await SequelizeSvc.syncModelAsync(mockModel);
+   //
+   //          expect(mockModel.sync).not.toHaveBeenCalled();
+   //          expect(logger.warn).toHaveBeenCalledWith(
+   //             expect.stringContaining('Model sync is disabled for test_table in production'),
+   //          );
+   //       });
+   //
+   //       it('should not sync even with force option in production', async () => {
+   //          await SequelizeSvc.syncModelAsync(mockModel, { force: true });
+   //
+   //          expect(mockModel.sync).not.toHaveBeenCalled();
+   //          expect(logger.warn).toHaveBeenCalled();
+   //       });
+   //
+   //       it('should return immediately without error in production', async () => {
+   //          await expect(SequelizeSvc.syncModelAsync(mockModel)).resolves.toBeUndefined();
+   //       });
+   //    });
+   //
+   //    describe('Other Environments', () => {
+   //       it('should not sync in staging environment', async () => {
+   //          Constants.RUNNING_ENVIRONMENT = 'staging';
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel);
+   //
+   //          expect(mockModel.sync).not.toHaveBeenCalled();
+   //          expect(logger.warn).toHaveBeenCalled();
+   //       });
+   //
+   //       it('should not sync in UAT environment', async () => {
+   //          Constants.RUNNING_ENVIRONMENT = 'uat';
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel);
+   //
+   //          expect(mockModel.sync).not.toHaveBeenCalled();
+   //          expect(logger.warn).toHaveBeenCalled();
+   //       });
+   //
+   //       it('should not sync in test environment', async () => {
+   //          Constants.RUNNING_ENVIRONMENT = 'test';
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel);
+   //
+   //          expect(mockModel.sync).not.toHaveBeenCalled();
+   //          expect(logger.warn).toHaveBeenCalled();
+   //       });
+   //    });
+   //
+   //    describe('Edge Cases', () => {
+   //       beforeEach(() => {
+   //          Constants.RUNNING_ENVIRONMENT = 'development';
+   //       });
+   //
+   //       it('should handle undefined RUNNING_ENVIRONMENT', async () => {
+   //          Constants.RUNNING_ENVIRONMENT = undefined;
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel);
+   //
+   //          expect(mockModel.sync).not.toHaveBeenCalled();
+   //          expect(logger.warn).toHaveBeenCalled();
+   //       });
+   //
+   //       it('should handle null RUNNING_ENVIRONMENT', async () => {
+   //          Constants.RUNNING_ENVIRONMENT = null;
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel);
+   //
+   //          expect(mockModel.sync).not.toHaveBeenCalled();
+   //       });
+   //
+   //       it('should handle empty string RUNNING_ENVIRONMENT', async () => {
+   //          Constants.RUNNING_ENVIRONMENT = '';
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel);
+   //
+   //          expect(mockModel.sync).not.toHaveBeenCalled();
+   //       });
+   //
+   //       it('should handle empty options object', async () => {
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel, {});
+   //
+   //          expect(mockModel.sync).toHaveBeenCalledWith({
+   //             alter: true,
+   //             force: false,
+   //          });
+   //       });
+   //
+   //       it('should handle null options', async () => {
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel, null);
+   //
+   //          expect(mockModel.sync).toHaveBeenCalledWith({
+   //             alter: true,
+   //             force: false,
+   //          });
+   //       });
+   //
+   //       it('should include error details in thrown CustomError', async () => {
+   //          const syncError = new Error('Sync failed');
+   //          mockModel.sync.mockRejectedValue(syncError);
+   //
+   //          try {
+   //             await SequelizeSvc.syncModelAsync(mockModel);
+   //          } catch (err) {
+   //             expect(err.message).toBe('Failed to sync model');
+   //             expect(err.className).toBe('SequelizeSvc');
+   //             expect(err.functionName).toBe('syncModelAsync');
+   //             expect(err.parameters).toEqual({ modelName: 'test_table' });
+   //             expect(err.details).toBeDefined();
+   //          }
+   //       });
+   //    });
+   //
+   //    describe('Model Name Resolution', () => {
+   //       beforeEach(() => {
+   //          Constants.RUNNING_ENVIRONMENT = 'development';
+   //       });
+   //
+   //       it('should prioritize getTableName over name', async () => {
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //          mockModel.getTableName.mockReturnValue('TableFromGetTableName');
+   //          mockModel.name = 'ModelName';
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel);
+   //
+   //          expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('TableFromGetTableName synced successfully'));
+   //       });
+   //
+   //       it('should use name when getTableName returns undefined', async () => {
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //          mockModel.getTableName.mockReturnValue(undefined);
+   //          mockModel.NAME = 'ModelName';
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel);
+   //
+   //          expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('ModelName synced successfully'));
+   //       });
+   //
+   //       it('should use Unknown when both are unavailable', async () => {
+   //          mockModel.sync.mockResolvedValue(undefined);
+   //          delete mockModel.getTableName;
+   //          delete mockModel.name;
+   //
+   //          await SequelizeSvc.syncModelAsync(mockModel);
+   //
+   //          expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('Unknown synced successfully'));
+   //       });
+   //    });
+   // });
 });

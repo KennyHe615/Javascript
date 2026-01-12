@@ -43,8 +43,6 @@ export default class ReferenceBase {
     */
    async runAsync() {
       try {
-         await SequelizeSvc.syncModelAsync(this.model, { alter: true });
-
          const data = await this.#refApiSvc.getReferenceDataAsync(this.initialUrl, this.model.NAME);
 
          if (!data || data.length === 0) {
@@ -57,7 +55,7 @@ export default class ReferenceBase {
 
          await SequelizeSvc.upsertAsync(mappedData, this.model);
 
-         logger.debug(`========== [${this.model.NAME}] ========== Reference data sync completed successfully`);
+         logger.debug(`========== [Model: ${this.model.NAME}] ========== Reference data sync completed successfully`);
          return true;
       } catch (err) {
          throw new CustomError({

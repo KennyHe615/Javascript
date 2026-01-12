@@ -9,7 +9,7 @@ import Constants from '../utils/constants.js';
 export default class SequelizeConfiguration {
    static #DEFAULT_CONFIG = Object.freeze({
       dialect: 'mssql',
-      timezone: 'Eastern Standard Time',
+      timezone: 'America/New_York',
       pool: Object.freeze({
          max: 30,
          min: 0,
