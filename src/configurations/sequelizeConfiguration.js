@@ -31,6 +31,7 @@ export default class SequelizeConfiguration {
       define: Object.freeze({
          schema: 'dbo',
          freezeTableName: true,
+         // underscored: true, // This maps camelCase to snake_case automatically
          timestamps: true,
          createdAt: 'app_created_at',
          updatedAt: 'app_updated_at',
