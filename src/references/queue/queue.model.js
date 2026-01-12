@@ -3,6 +3,12 @@
 import { DataTypes, Model } from 'sequelize';
 import SequelizeFactory from '../../factories/sequelizeFactory.js';
 
+/**
+ * Sequelize Model representing a Queue entity in the database.
+ * Maps to the 'Gen_Queue' table.
+ *
+ * @extends Model
+ */
 class Queue extends Model {
    static NAME = 'Queue';
 

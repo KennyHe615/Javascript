@@ -2,13 +2,22 @@
 
 import CustomError from '../../utils/errors/CustomError.js';
 
+/**
+ * Utility class for mapping raw Queue API entities to a structured database/application format.
+ */
 export default class QueueMapper {
+   /**
+    * Maps an array of raw queue objects to a formatted object array.
+    *
+    * @param {Array<Object>} payload - The raw payload received from the API.
+    * @returns {Array<Object>} A list of formatted queue objects.
+    * @throws {Object} Throws a CustomError object if the payload is invalid.
+    */
    static map(payload) {
-      if (!payload || payload.length === 0) {
+      if (!Array.isArray(payload) || payload.length === 0) {
          throw new CustomError({
-            message: `Invalid payload: Payload is empty.`,
+            message: `Invalid payload: Expected a non-empty array.`,
             className: 'QueueMapper',
-            functionName: 'map',
          }).toObject();
       }
 
@@ -30,14 +39,14 @@ export default class QueueMapper {
          queueFlowName: entity.queueFlow?.name,
          whisperPromptId: entity.whisperPrompt?.id,
          whisperPromptName: entity.whisperPrompt?.name,
-         autoAnswerOnly: entity.autoAnswerOnly ? 'true' : 'false',
-         enableTranscription: entity.enableTranscription ? 'true' : 'false',
+         autoAnswerOnly: String(!!entity.autoAnswerOnly),
+         enableTranscription: String(!!entity.enableTranscription),
          callingPartyName: entity.callingPartyName,
          callingPartyNumber: entity.callingPartyNumber,
          acwSettingsWrapUpPrompt: entity.acwSettings?.wrapupPrompt,
          acwSettingsTimeoutMs: entity.acwSettings?.timeoutMs,
-         enableManualAssignment: entity.enableManualAssignment ? 'true' : 'false',
-         agentOwnedRoutingEnableAgentOwnedCallbacks: entity.agentOwnedRouting?.enableAgentOwnedCallbacks ? 'true' : 'false',
+         enableManualAssignment: String(!!entity.enableManualAssignment),
+         agentOwnedRoutingEnableAgentOwnedCallbacks: String(!!entity.agentOwnedRouting?.enableAgentOwnedCallbacks),
          agentOwnedRoutingMaxOwnedCallbackHours: entity.agentOwnedRouting?.maxOwnedCallbackHours,
          agentOwnedRoutingMaxOwnedCallbackDelayHours: entity.agentOwnedRouting?.maxOwnedCallbackDelayHours,
          defaultScriptsCallId: entity.defaultScripts?.CALL?.id,
