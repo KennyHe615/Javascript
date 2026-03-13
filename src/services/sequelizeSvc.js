@@ -1,3 +1,4 @@
+import PQueue from 'p-queue';
 import logger from './winstonSvc.js';
 import DatabaseError from '../utils/errors/databaseError.js';
 import CustomError from '../utils/errors/customError.js';
@@ -15,6 +16,10 @@ export default class SequelizeSvc {
       batchSize: 100,
       maxRetries: 3,
       retryDelay: 500,
+   });
+   static #UPSERT_QUEUE = new PQueue({
+      concurrency: 10,
+      autoStart: true,
    });
 
    #instance;
@@ -82,91 +87,69 @@ export default class SequelizeSvc {
    }
 
    /**
-    * Performs upsert operation on the database.
-    * This is a static utility method that works with any Sequelize model.
+    * Performs throttled upsert operations for a single record or an array of records.
+    *
+    * Design notes:
+    * - This method accepts either one object or an array of objects.
+    * - Every row is submitted to a shared PQueue to prevent uncontrolled DB concurrency.
+    * - Promise.all is intentionally used only to await completion of all queued tasks.
+    *   It does NOT create unlimited DB concurrency because the queue
+    *    controls the actual execution concurrency.
+    *
+    * Behavior:
+    * - Single object input => one queued upsert task.
+    * - Array input => one queued upsert task per row, all awaited together.
+    * - Empty array => no-op.
     *
     * @static
     * @async
-    * @param {Object|Array} mappedData - Data to upsert (single object or array of objects)
-    * @param {import('sequelize').Model} model - Sequelize model (already bound to a connection)
+    * @param {Object|Object[]} mappedData - Record or records to upsert.
+    * @param {import('sequelize').ModelStatic<import('sequelize').Model>} model - Sequelize model bound to an active Sequelize instance.
     * @returns {Promise<void>}
-    * @throws {CustomError} When upsert operation fails
-    * @example
-    * await SequelizeSvc.upsert({ id: 1, name: 'John' }, UserModel);
-    * await SequelizeSvc.upsert([{ id: 1, name: 'John' }, { id: 2, name: 'Jane' }], UserModel);
+    * @throws {Object} CustomError object when validation fails or any queued upsert fails.
     */
    static async upsertAsync(mappedData, model) {
+      const modelName = model?.name || model?.NAME || 'UnknownModel';
+
       if (!mappedData || !model) {
          throw new CustomError({
             message: 'Both "mappedData" and "model" are required!',
             className: SequelizeSvc.#CLASS_NAME,
             functionName: 'upsertAsync',
-            parameters: { modelName: model?.NAME },
+            parameters: { modelName },
          }).toObject();
       }
 
       const data = Array.isArray(mappedData) ? mappedData : [mappedData];
       if (data.length === 0) return;
 
-      // Process data in batches to reduce deadlock probability
-      for (let i = 0; i < data.length; i += SequelizeSvc.#CONFIG.batchSize) {
-         const batch = data.slice(i, i + SequelizeSvc.#CONFIG.batchSize);
-
-         // Retry mechanism for deadlock handling
-         let attempt = 0;
-         let batchSuccess = false;
-         let lastRow = null;
-         let lastError = null;
-
-         while (attempt < SequelizeSvc.#CONFIG.maxRetries && !batchSuccess) {
-            try {
-               // Process each row in the batch sequentially to avoid concurrent deadlocks
-               for (const row of batch) {
-                  lastRow = row;
-
-                  await model.upsert(row, { fields: model?.FIELDS || [] });
-               }
-
-               batchSuccess = true;
-            } catch (err) {
-               lastError = new DatabaseError(lastRow, err).toObject();
-
-               // Check if the error is a deadlock error
-               const isDeadlock =
-                  err.original &&
-                  typeof err.original.message === 'string' &&
-                  (err.original.message.includes('deadlock') || err.original.message.includes('Deadlock'));
-
-               if (isDeadlock) {
-                  attempt++;
-                  if (attempt < SequelizeSvc.#CONFIG.maxRetries) {
-                     // Wait before retrying with exponential backoff
-                     await setTimeout(SequelizeSvc.#CONFIG.retryDelay * Math.pow(2, attempt - 1));
-                     continue;
+      try {
+         await Promise.all(
+            data.map((row) =>
+               SequelizeSvc.#UPSERT_QUEUE.add(async () => {
+                  try {
+                     await model.upsert(row, { fields: model.FIELDS || [] });
+                  } catch (err) {
+                     throw new DatabaseError(row, err).toObject();
                   }
-               }
+               }),
+            ),
+         );
+      } catch (err) {
+         logger.error(`Upsert operation failed: ${JSON.stringify(err, null, 3)}`);
 
-               // If it's not a deadlock, or we've exhausted retries, break out of the retry loop
-               break;
-            }
-         }
-
-         // If the batch failed after all retries, throw the error
-         if (!batchSuccess && lastError) {
-            throw new CustomError({
-               message: 'Upserting Record ERROR!',
-               className: SequelizeSvc.#CLASS_NAME,
-               functionName: 'upsertAsync',
-               parameters: {
-                  modelName: model?.NAME,
-                  attempt,
-               },
-               details: lastError,
-            }).toObject();
-         }
+         throw new CustomError({
+            message: 'Upserting Record ERROR!',
+            className: SequelizeSvc.#CLASS_NAME,
+            functionName: 'upsert',
+            parameters: {
+               modelName,
+               queueSize: SequelizeSvc.#UPSERT_QUEUE.size,
+               queuePending: SequelizeSvc.#UPSERT_QUEUE.pending,
+            },
+            details: err,
+         }).toObject();
       }
-
-      logger.debug(`========== [Model: ${model?.NAME}] ========== Successfully upserted ${data.length} records`);
    }
 
    /**
@@ -174,18 +157,21 @@ export default class SequelizeSvc {
     *
     * @static
     * @async
-    * @param {Object} mappedData - Data to create
-    * @param {import('sequelize').Model} model - Sequelize model (already bound to a connection)
-    * @returns {Promise<Object>} Created record
-    * @throws {CustomError} When create operation fails or data is empty
+    * @param {Object} mappedData - Data to insert.
+    * @param {import('sequelize').ModelStatic<import('sequelize').Model>} model - Sequelize model bound to an active Sequelize instance.
+    * @returns {Promise<void|null>} Resolves when the record is created, or null if empty data is provided.
+    * @throws {Object} CustomError object when required parameters are missing.
+    * @throws {Object} DatabaseError object when insert fails.
     */
    static async createAsync(mappedData, model) {
+      const modelName = model?.name || model?.NAME || 'UnknownModel';
+
       if (!mappedData || !model) {
          throw new CustomError({
             message: 'Both "mappedData" and "model" are required!',
             className: SequelizeSvc.#CLASS_NAME,
             functionName: 'createAsync',
-            parameters: { modelName: model?.NAME },
+            parameters: { modelName },
          }).toObject();
       }
 
@@ -194,7 +180,7 @@ export default class SequelizeSvc {
             message: 'No data provided for create operation',
             className: SequelizeSvc.#CLASS_NAME,
             functionName: 'createAsync',
-            parameters: { modelName: model?.NAME },
+            parameters: { modelName },
          });
       }
 
